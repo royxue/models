@@ -53,13 +53,31 @@ flags.DEFINE_boolean(
     'run_once', False, 'If running in eval-only mode, whether to run just '
     'one round of eval vs running continuously (default).'
 )
+flags.DEFINE_enum(
+  'distribute_mode', 'single', ['single', 'mirrored', 'allreduce', 'ps'], 'Distribute '
+  'mode to train the model'
+)
 FLAGS = flags.FLAGS
 
 
 def main(unused_argv):
   flags.mark_flag_as_required('model_dir')
   flags.mark_flag_as_required('pipeline_config_path')
-  config = tf.estimator.RunConfig(model_dir=FLAGS.model_dir)
+
+  if FLAGS.distribute_mode == 'single':
+    strategy = None
+  elif FLAGS.distribute_mode == 'mirrored':
+    strategy = tf.contrib.distribute.MirroredStrategy()
+  elif FLAGS.distribute_mode == 'allreduce':
+    strategy = tf.contrib.distribute.CollectiveAllReduceStrategy()
+  elif FLAGS.distribute_mode == 'ps':
+    strategy = tf.contrib.distribute.ParameterServerStrategy()
+
+  if strategy:
+    config = tf.estimator.RunConfig(model_dir=FLAGS.model_dir,
+                                    train_distribute=strategy)
+  else:
+    config = tf.estimator.RunConfig(model_dir=FLAGS.model_dir)
 
   train_and_eval_dict = model_lib.create_estimator_and_inputs(
       run_config=config,
